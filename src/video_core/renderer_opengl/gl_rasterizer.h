@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstddef>
+#include <map>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -169,6 +170,13 @@ private:
     OGLFramebuffer framebuffer;
     GLint uniform_buffer_alignment;
 
+    struct GPUBufferCacheEntry {
+        GLintptr offset;
+        size_t size;
+        size_t alignment;
+    };
+    std::map<Tegra::GPUVAddr, GPUBufferCacheEntry> GPU_buffer_cache;
+
     size_t CalculateVertexArraysSize() const;
 
     std::pair<u8*, GLintptr> SetupVertexArrays(u8* array_ptr, GLintptr buffer_offset);
@@ -179,7 +187,7 @@ private:
 
     std::tuple<u8*, GLintptr, GLintptr> UploadMemory(u8* buffer_ptr, GLintptr buffer_offset,
                                                      Tegra::GPUVAddr gpu_addr, size_t size,
-                                                     size_t alignment = 4);
+                                                     size_t alignment = 4, bool cache = true);
 
     enum class AccelDraw { Disabled, Arrays, Indexed };
     AccelDraw accelerate_draw = AccelDraw::Disabled;

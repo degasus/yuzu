@@ -11,6 +11,8 @@
 #include "video_core/gpu.h"
 #include "video_core/memory_manager.h"
 
+extern bool invalidate_everything;
+
 namespace Service::Nvidia::Devices {
 
 u32 nvhost_gpu::ioctl(Ioctl command, const std::vector<u8>& input, std::vector<u8>& output) {
@@ -47,6 +49,7 @@ u32 nvhost_gpu::ioctl(Ioctl command, const std::vector<u8>& input, std::vector<u
         if (command.cmd == NVGPU_IOCTL_CHANNEL_KICKOFF_PB) {
             return KickoffPB(input, output);
         }
+        invalidate_everything = true;
     }
 
     UNIMPLEMENTED_MSG("Unimplemented ioctl");
@@ -144,6 +147,7 @@ u32 nvhost_gpu::SubmitGPFIFO(const std::vector<u8>& input, std::vector<u8>& outp
     for (auto entry : entries) {
         Tegra::GPUVAddr va_addr = entry.Address();
         Core::System::GetInstance().GPU().ProcessCommandList(va_addr, entry.sz);
+        //invalidate_everything = true;
     }
     params.fence_out.id = 0;
     params.fence_out.value = 0;
@@ -167,6 +171,7 @@ u32 nvhost_gpu::KickoffPB(const std::vector<u8>& input, std::vector<u8>& output)
     for (auto entry : entries) {
         Tegra::GPUVAddr va_addr = entry.Address();
         Core::System::GetInstance().GPU().ProcessCommandList(va_addr, entry.sz);
+        //invalidate_everything = true;
     }
     params.fence_out.id = 0;
     params.fence_out.value = 0;

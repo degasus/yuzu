@@ -13,6 +13,9 @@
 #include "video_core/textures/texture.h"
 #include "video_core/video_core.h"
 
+
+
+extern bool invalidate_everything;
 namespace Tegra {
 namespace Engines {
 
@@ -189,6 +192,7 @@ void Maxwell3D::ProcessQueryGet() {
             // TODO(Subv): Find out what happens if you use a long query type but mark it as a short
             // query.
             Memory::Write32(*address, sequence);
+            invalidate_everything = true;
         } else {
             // Write the 128-bit result structure in long mode. Note: We emulate an infinitely fast
             // GPU, this command may actually take a while to complete in real hardware due to GPU
@@ -198,6 +202,7 @@ void Maxwell3D::ProcessQueryGet() {
             // TODO(Subv): Generate a real GPU timestamp and write it here instead of 0
             query_result.timestamp = 0;
             Memory::WriteBlock(*address, &query_result, sizeof(query_result));
+            invalidate_everything = true;
         }
         break;
     }
@@ -275,6 +280,7 @@ void Maxwell3D::ProcessCBData(u32 value) {
         memory_manager.GpuToCpuAddress(buffer_address + regs.const_buffer.cb_pos);
 
     Memory::Write32(*address, value);
+    invalidate_everything = true;
 
     // Increment the current buffer position.
     regs.const_buffer.cb_pos = regs.const_buffer.cb_pos + 4;

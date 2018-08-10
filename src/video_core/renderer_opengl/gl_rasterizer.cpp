@@ -25,6 +25,8 @@
 #include "video_core/renderer_opengl/renderer_opengl.h"
 #include "video_core/video_core.h"
 
+bool invalidate_everything;
+
 using Maxwell = Tegra::Engines::Maxwell3D::Regs;
 using PixelFormat = SurfaceParams::PixelFormat;
 using SurfaceType = SurfaceParams::SurfaceType;
@@ -422,7 +424,16 @@ std::pair<u8*, GLintptr> RasterizerOpenGL::AlignBuffer(u8* buffer_ptr, GLintptr 
 std::tuple<u8*, GLintptr, GLintptr> RasterizerOpenGL::UploadMemory(u8* buffer_ptr,
                                                                    GLintptr buffer_offset,
                                                                    Tegra::GPUVAddr gpu_addr,
-                                                                   size_t size, size_t alignment) {
+                                                                   size_t size, size_t alignment,
+                                                                   bool cache) {
+    auto iter = GPU_buffer_cache.find(gpu_addr);
+    if (iter != GPU_buffer_cache.end() && cache) {
+        auto& e = iter->second;
+        if (e.size == size && e.alignment == alignment) {
+            return {buffer_ptr, buffer_offset, e.offset};
+        }
+    }
+
     std::tie(buffer_ptr, buffer_offset) = AlignBuffer(buffer_ptr, buffer_offset, alignment);
     GLintptr uploaded_offset = buffer_offset;
 
@@ -433,6 +444,12 @@ std::tuple<u8*, GLintptr, GLintptr> RasterizerOpenGL::UploadMemory(u8* buffer_pt
     buffer_ptr += size;
     buffer_offset += size;
 
+    if (cache) {
+        auto& e = GPU_buffer_cache[gpu_addr];
+        e.offset = uploaded_offset;
+        e.size = size;
+        e.alignment = alignment;
+    }
     return {buffer_ptr, buffer_offset, uploaded_offset};
 }
 
@@ -480,9 +497,15 @@ void RasterizerOpenGL::DrawArrays() {
 
     u8* buffer_ptr;
     GLintptr buffer_offset;
-    std::tie(buffer_ptr, buffer_offset, std::ignore) =
+    bool invalidate;
+    std::tie(buffer_ptr, buffer_offset, invalidate) =
         stream_buffer.Map(static_cast<GLsizeiptr>(buffer_size), 4);
     u8* buffer_ptr_base = buffer_ptr;
+
+    if (invalidate || invalidate_everything) {
+        GPU_buffer_cache.clear();
+        invalidate_everything = false;
+    }
 
     std::tie(buffer_ptr, buffer_offset) = SetupVertexArrays(buffer_ptr, buffer_offset);
 
