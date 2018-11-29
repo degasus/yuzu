@@ -81,19 +81,17 @@ struct DrawParameters {
 
 struct FramebufferCacheKey {
     bool is_single_buffer = false;
-    u32 single_attachment = 0;
-    GLenum single_color = 0;
+    bool stencil_enable = false;
 
     std::array<GLenum, Maxwell::NumRenderTargets> color_attachments{};
     std::array<GLuint, Tegra::Engines::Maxwell3D::Regs::NumRenderTargets> colors{};
     u32 colors_count = 0;
 
-    GLenum zeta_attachment = GL_NONE;
     GLuint zeta = 0;
 
     auto Tie() const {
-        return std::tie(is_single_buffer, single_attachment, single_color, color_attachments,
-                        colors, colors_count, zeta_attachment, zeta);
+        return std::tie(is_single_buffer, stencil_enable, color_attachments, colors, colors_count,
+                        zeta);
     }
 
     bool operator<(const FramebufferCacheKey& rhs) const {
@@ -389,6 +387,7 @@ void RasterizerOpenGL::SetupCachedFramebuffer(const FramebufferCacheKey& fbkey,
 
     if (is_cache_miss)
         framebuffer.Create();
+
     current_state.draw.draw_framebuffer = framebuffer.handle;
     current_state.ApplyFramebufferState();
 
@@ -396,22 +395,26 @@ void RasterizerOpenGL::SetupCachedFramebuffer(const FramebufferCacheKey& fbkey,
         return;
 
     if (fbkey.is_single_buffer) {
-        if (fbkey.single_attachment != GL_NONE) {
-            glFramebufferTexture(GL_DRAW_FRAMEBUFFER, fbkey.single_attachment, fbkey.single_color,
+        if (fbkey.color_attachments[0] != GL_NONE) {
+            glFramebufferTexture(GL_DRAW_FRAMEBUFFER, fbkey.color_attachments[0], fbkey.colors[0],
                                  0);
         }
-        glDrawBuffer(fbkey.single_attachment);
+        glDrawBuffer(fbkey.color_attachments[0]);
     } else {
         for (std::size_t index = 0; index < Maxwell::NumRenderTargets; ++index) {
-            glFramebufferTexture(GL_DRAW_FRAMEBUFFER,
-                                 GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(index),
-                                 fbkey.colors[index], 0);
+            if (fbkey.colors[index]) {
+                glFramebufferTexture(GL_DRAW_FRAMEBUFFER,
+                                     GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(index),
+                                     fbkey.colors[index], 0);
+            }
         }
         glDrawBuffers(fbkey.colors_count, fbkey.color_attachments.data());
     }
 
     if (fbkey.zeta) {
-        glFramebufferTexture(GL_DRAW_FRAMEBUFFER, fbkey.zeta_attachment, fbkey.zeta, 0);
+        GLenum zeta_attachment =
+            fbkey.stencil_enable ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+        glFramebufferTexture(GL_DRAW_FRAMEBUFFER, zeta_attachment, fbkey.zeta, 0);
     }
 }
 
@@ -518,9 +521,9 @@ void RasterizerOpenGL::ConfigureFramebuffers(OpenGLState& current_state, bool us
             }
 
             fbkey.is_single_buffer = true;
-            fbkey.single_attachment =
+            fbkey.color_attachments[0] =
                 GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(*single_color_target);
-            fbkey.single_color = color_surface != nullptr ? color_surface->Texture().handle : 0;
+            fbkey.colors[0] = color_surface != nullptr ? color_surface->Texture().handle : 0;
         } else {
             // Multiple color attachments are enabled
             for (std::size_t index = 0; index < Maxwell::NumRenderTargets; ++index) {
@@ -548,8 +551,6 @@ void RasterizerOpenGL::ConfigureFramebuffers(OpenGLState& current_state, bool us
     } else {
         // No color attachments are enabled - leave them as zero
         fbkey.is_single_buffer = true;
-        fbkey.single_attachment = GL_NONE;
-        fbkey.single_color = 0;
     }
 
     if (depth_surface) {
@@ -558,8 +559,7 @@ void RasterizerOpenGL::ConfigureFramebuffers(OpenGLState& current_state, bool us
         depth_surface->MarkAsModified(true, res_cache);
 
         fbkey.zeta = depth_surface->Texture().handle;
-        fbkey.zeta_attachment =
-            regs.stencil_enable ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+        fbkey.stencil_enable = regs.stencil_enable;
     }
 
     SetupCachedFramebuffer(fbkey, current_state);
