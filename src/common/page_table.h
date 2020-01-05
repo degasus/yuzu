@@ -61,6 +61,7 @@ struct PageTable {
 
     void Clear();
 
+    void AllocTables();
     void FreeTables();
 
     /**
