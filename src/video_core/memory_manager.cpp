@@ -16,9 +16,6 @@ namespace Tegra {
 
 MemoryManager::MemoryManager(Core::System& system, VideoCore::RasterizerInterface& rasterizer)
     : rasterizer{rasterizer}, system{system} {
-    std::fill(page_table.pointers.begin(), page_table.pointers.end(), nullptr);
-    std::fill(page_table.attributes.begin(), page_table.attributes.end(),
-              Common::PageType::Unmapped);
     page_table.Resize(address_space_width);
 
     // Initialize the map with a single free region covering the entire managed space.
@@ -115,7 +112,7 @@ GPUVAddr MemoryManager::FindFreeRegion(GPUVAddr region_start, u64 size) const {
 }
 
 bool MemoryManager::IsAddressValid(GPUVAddr addr) const {
-    return (addr >> page_bits) < page_table.pointers.size();
+    return (addr >> page_bits) < page_table.size;
 }
 
 std::optional<VAddr> MemoryManager::GpuToCpuAddress(GPUVAddr addr) const {
@@ -368,14 +365,14 @@ void MemoryManager::MapPages(GPUVAddr base, u64 size, u8* memory, Common::PageTy
               (base + size) * page_size);
 
     const VAddr end{base + size};
-    ASSERT_MSG(end <= page_table.pointers.size(), "out of range mapping at {:016X}",
-               base + page_table.pointers.size());
+    ASSERT_MSG(end <= page_table.size, "out of range mapping at {:016X}",
+               base + page_table.size);
 
-    std::fill(page_table.attributes.begin() + base, page_table.attributes.begin() + end, type);
+    std::fill(page_table.attributes + base, page_table.attributes + end, type);
 
     if (memory == nullptr) {
-        std::fill(page_table.pointers.begin() + base, page_table.pointers.begin() + end, memory);
-        std::fill(page_table.backing_addr.begin() + base, page_table.backing_addr.begin() + end,
+        std::fill(page_table.pointers + base, page_table.pointers + end, memory);
+        std::fill(page_table.backing_addr + base, page_table.backing_addr + end,
                   backing_addr);
     } else {
         while (base != end) {

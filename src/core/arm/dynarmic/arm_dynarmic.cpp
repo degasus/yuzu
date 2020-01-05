@@ -138,7 +138,7 @@ std::unique_ptr<Dynarmic::A64::Jit> ARM_Dynarmic::MakeJit(Common::PageTable& pag
     config.callbacks = cb.get();
 
     // Memory
-    config.page_table = reinterpret_cast<void**>(page_table.pointers.data());
+    config.page_table = reinterpret_cast<void**>(page_table.pointers);
     config.page_table_address_space_bits = address_space_bits;
     config.silently_mirror_page_table = false;
     config.absolute_offset_page_table = true;

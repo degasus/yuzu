@@ -53,16 +53,21 @@ struct PageTable {
     /**
      * Resizes the page table to be able to accomodate enough pages within
      * a given address space.
+     * This will clear the page table to Unmapped.
      *
      * @param address_space_width_in_bits The address size width in bits.
      */
     void Resize(std::size_t address_space_width_in_bits);
 
+    void Clear();
+
+    void FreeTables();
+
     /**
      * Vector of memory pointers backing each page. An entry can only be non-null if the
      * corresponding entry in the `attributes` vector is of type `Memory`.
      */
-    std::vector<u8*> pointers;
+    u8** pointers = nullptr;
 
     /**
      * Contains MMIO handlers that back memory regions whose entries in the `attribute` vector is
@@ -74,11 +79,12 @@ struct PageTable {
      * Vector of fine grained page attributes. If it is set to any value other than `Memory`, then
      * the corresponding entry in `pointers` MUST be set to null.
      */
-    std::vector<PageType> attributes;
+    PageType* attributes = nullptr;
 
-    std::vector<u64> backing_addr;
+    u64* backing_addr = nullptr;
 
     const std::size_t page_size_in_bits{};
+    std::size_t size = 0;
 };
 
 } // namespace Common

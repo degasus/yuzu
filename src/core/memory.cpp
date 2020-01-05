@@ -488,14 +488,13 @@ struct Memory::Impl {
         }
 
         const VAddr end = base + size;
-        ASSERT_MSG(end <= page_table.pointers.size(), "out of range mapping at {:016X}",
-                   base + page_table.pointers.size());
+        ASSERT_MSG(end <= page_table.size, "out of range mapping at {:016X}",
+                   base + page_table.size);
 
-        std::fill(page_table.attributes.begin() + base, page_table.attributes.begin() + end, type);
+        std::fill(page_table.attributes + base, page_table.attributes + end, type);
 
         if (memory == nullptr) {
-            std::fill(page_table.pointers.begin() + base, page_table.pointers.begin() + end,
-                      memory);
+            std::fill(page_table.pointers + base, page_table.pointers + end, memory);
         } else {
             while (base != end) {
                 page_table.pointers[base] = memory - (base << PAGE_BITS);

@@ -19,11 +19,7 @@ TestEnvironment::TestEnvironment(bool mutable_memory_)
 
     auto process = Kernel::Process::Create(system, "", Kernel::Process::ProcessType::Userland);
     page_table = &process->VMManager().page_table;
-
-    std::fill(page_table->pointers.begin(), page_table->pointers.end(), nullptr);
-    page_table->special_regions.clear();
-    std::fill(page_table->attributes.begin(), page_table->attributes.end(),
-              Common::PageType::Unmapped);
+    page_table->Clear();
 
     system.Memory().MapIoRegion(*page_table, 0x00000000, 0x80000000, test_memory);
     system.Memory().MapIoRegion(*page_table, 0x80000000, 0x80000000, test_memory);

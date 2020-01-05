@@ -8,24 +8,40 @@ namespace Common {
 
 PageTable::PageTable(std::size_t page_size_in_bits) : page_size_in_bits{page_size_in_bits} {}
 
-PageTable::~PageTable() = default;
+PageTable::~PageTable() {
+    FreeTables();
+}
 
 void PageTable::Resize(std::size_t address_space_width_in_bits) {
-    const std::size_t num_page_table_entries = 1ULL
-                                               << (address_space_width_in_bits - page_size_in_bits);
+    FreeTables();
 
-    pointers.resize(num_page_table_entries);
-    attributes.resize(num_page_table_entries);
-    backing_addr.resize(num_page_table_entries);
+    size = 1ULL << (address_space_width_in_bits - page_size_in_bits);
 
-    // The default is a 39-bit address space, which causes an initial 1GB allocation size. If the
-    // vector size is subsequently decreased (via resize), the vector might not automatically
-    // actually reallocate/resize its underlying allocation, which wastes up to ~800 MB for
-    // 36-bit titles. Call shrink_to_fit to reduce capacity to what's actually in use.
+    pointers = new u8*[size];
+    attributes = new PageType[size];
+    backing_addr = new u64[size];
 
-    pointers.shrink_to_fit();
-    attributes.shrink_to_fit();
-    backing_addr.shrink_to_fit();
+    Clear();
+}
+
+void PageTable::Clear() {
+    special_regions.clear();
+
+    std::fill(pointers, pointers + size, nullptr);
+    std::fill(attributes, attributes + size, Common::PageType::Unmapped);
+    std::fill(backing_addr, backing_addr + size, 0);
+}
+
+void PageTable::FreeTables() {
+    delete [] pointers;
+    delete [] attributes;
+    delete [] backing_addr;
+
+    pointers = nullptr;
+    attributes = nullptr;
+    backing_addr = nullptr;
+
+    size = 0;
 }
 
 } // namespace Common

@@ -894,10 +894,7 @@ void VMManager::ClearVMAMap() {
 }
 
 void VMManager::ClearPageTable() {
-    std::fill(page_table.pointers.begin(), page_table.pointers.end(), nullptr);
-    page_table.special_regions.clear();
-    std::fill(page_table.attributes.begin(), page_table.attributes.end(),
-              Common::PageType::Unmapped);
+    page_table.Clear();
 }
 
 VMManager::CheckResults VMManager::CheckRangeState(VAddr address, u64 size, MemoryState state_mask,
