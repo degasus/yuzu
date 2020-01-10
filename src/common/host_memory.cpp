@@ -14,6 +14,7 @@
 
 #include <cassert>
 #include <cstring>
+#include "common/assert.h"
 #include "common/host_memory.h"
 
 static size_t total_memory_used = 0;
@@ -32,18 +33,22 @@ public:
 
     bool resize(size_t bytes) {
         int err = ftruncate(fd, bytes);
-        if (err != 0)
+        if (err != 0) {
+            ASSERT_MSG(false, "ftruncate did not work: {}", strerror(errno));
             return false;
+        }
 
         if (size) {
             err = munmap(pointer, size);
-            assert(err == 0);
+            ASSERT_MSG(err == 0, "munmap did not work: {}", strerror(errno));
         }
 
         if (bytes) {
             pointer =
                 static_cast<u8*>(mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
-            if (pointer == nullptr) {
+            if (pointer == MAP_FAILED) {
+                ASSERT_MSG(false, "mmap did not work: {}", strerror(errno));
+                pointer = nullptr;
                 return false;
             }
         } else {
@@ -57,22 +62,22 @@ public:
 
     void clearRegion(size_t length, size_t offset) {
         int err = fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, offset, length);
-        (void)err;
-        assert(err == 0);
+        ASSERT_MSG(err == 0, "fallocate did not work: {}", strerror(errno));
     }
 
     bool map(size_t length, size_t offset, u8* pointer) {
         void* ret =
             mmap(pointer, length, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, offset);
-        assert(ret == nullptr || ret == pointer);
+        ASSERT_MSG(ret != MAP_FAILED, "mmap did not work: {}", strerror(errno));
 
-        return ret != nullptr;
+        return ret != MAP_FAILED && ret == pointer;
     }
 
     bool unmap(size_t length, u8* pointer) {
-        int ret = munmap(pointer, length);
+        int err = munmap(pointer, length);
+        ASSERT_MSG(err == 0, "mmap did not work: {}", strerror(errno));
 
-        return ret == 0;
+        return err == 0;
     }
 
     size_t size = 0;
@@ -80,9 +85,25 @@ public:
     const int fd;
 };
 
+class VirtualMemoryRegion::Impl {
+public:
+    Impl(size_t size_) : size(size_) {
+        base_pointer =
+            static_cast<u8*>(mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+        ASSERT_MSG(base_pointer != MAP_FAILED, "no virtual memory region could be allocated: {}",
+                   strerror(errno));
+        if (base_pointer == MAP_FAILED)
+            base_pointer = nullptr;
+    }
+
+    u8* base_pointer{};
+
+    const size_t size;
+};
+
 #elif defined(_WIN32)
 
-class Impl {
+class HostMemory::Impl {
     Impl() {
         handle = CreateFileMapping(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, 0, nullptr);
         assert(handle != nullptr);
@@ -132,6 +153,10 @@ class Impl {
     size_t size = 0;
     u8* pointer = nullptr;
     HANDLE handle;
+};
+
+class VirtualMemoryRegion::Impl {
+    // TODO: big todo...
 };
 
 #else
@@ -248,6 +273,43 @@ const u8* HostMemory::data() const {
         return nullptr;
 
     return impl->pointer;
+}
+
+VirtualMemoryRegion::VirtualMemoryRegion(size_t size) : impl{std::make_unique<Impl>(size)} {}
+
+VirtualMemoryRegion::~VirtualMemoryRegion() {
+    int ret = munmap(impl->base_pointer, impl->size);
+    ASSERT_MSG(ret == 0, "failed to unmap the virtual region");
+}
+
+u8* VirtualMemoryRegion::getBasePointer() {
+    return impl->base_pointer;
+}
+
+const u8* VirtualMemoryRegion::getBasePointer() const {
+    return impl->base_pointer;
+}
+
+bool VirtualMemoryRegion::map(HostMemory& memory, size_t host_offset, size_t length,
+                              size_t virtual_offset) {
+    return memory.map(length, host_offset, impl->base_pointer + virtual_offset);
+}
+
+void VirtualMemoryRegion::unmap(size_t offset, size_t length) {
+    void* ret = mmap(impl->base_pointer + offset, length, PROT_NONE,
+                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+    ASSERT_MSG(ret != MAP_FAILED, "marking pages as reseved failed: {}", strerror(errno));
+}
+
+bool VirtualMemoryRegion::mprotect(size_t offset, size_t length, bool read, bool write) {
+    int flags = 0;
+    if (read)
+        flags |= PROT_READ;
+    if (write)
+        flags |= PROT_WRITE;
+    int ret = ::mprotect(impl->base_pointer + offset, length, flags);
+    ASSERT_MSG(ret == 0, "mprotect failed: {}", strerror(errno));
+    return true;
 }
 
 } // namespace Common
