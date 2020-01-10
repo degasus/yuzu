@@ -14,6 +14,8 @@ namespace Common {
  * Its purpose is to rebuild a given sparse memory layout, including mirrors.
  */
 class HostMemory {
+    friend class VirtualMemoryRegion;
+
 public:
     HostMemory(std::string_view usage = "HostMemory");
     ~HostMemory();
@@ -94,6 +96,31 @@ private:
     class Impl;
     std::unique_ptr<Impl> impl;
     std::string usage;
+};
+
+class VirtualMemoryRegion {
+public:
+    static constexpr u8* invalid_base_pointer = nullptr;
+
+    VirtualMemoryRegion(size_t size, u8* base_pointer_hint = invalid_base_pointer);
+    ~VirtualMemoryRegion();
+
+    VirtualMemoryRegion(VirtualMemoryRegion& other) = delete;
+    VirtualMemoryRegion(VirtualMemoryRegion&& other) = delete;
+    VirtualMemoryRegion& operator=(VirtualMemoryRegion& other) = delete;
+    VirtualMemoryRegion& operator=(VirtualMemoryRegion&& other) = delete;
+
+    u8* getBasePointer();
+    const u8* getBasePointer() const;
+
+    bool map(HostMemory& memory, size_t host_offset, size_t length, size_t virtual_offset);
+    void unmap(size_t offset, size_t length);
+
+    bool mprotect(size_t offset, size_t length, bool read, bool write);
+
+private:
+    class Impl;
+    std::unique_ptr<Impl> impl;
 };
 
 } // namespace Common

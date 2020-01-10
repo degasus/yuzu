@@ -32,6 +32,7 @@ struct Memory::Impl {
 
     void SetCurrentPageTable(Kernel::KProcess& process, u32 core_id) {
         current_page_table = &process.PageTable().PageTableImpl();
+        current_page_table->fastmem_arena = fastmem_arena.getBasePointer();
 
         const std::size_t address_space_width = process.PageTable().GetAddressSpaceWidth();
 
@@ -41,13 +42,19 @@ struct Memory::Impl {
     void MapMemoryRegion(Common::PageTable& page_table, VAddr base, u64 size, PAddr target) {
         ASSERT_MSG((size & PAGE_MASK) == 0, "non-page aligned size: {:016X}", size);
         ASSERT_MSG((base & PAGE_MASK) == 0, "non-page aligned base: {:016X}", base);
+        ASSERT_MSG(target >= DramMemoryMap::Base && target < DramMemoryMap::End,
+                   "out of bounds target: {:016X}", target);
         MapPages(page_table, base / PAGE_SIZE, size / PAGE_SIZE, target, Common::PageType::Memory);
+
+        fastmem_arena.map(system.DeviceMemory().buffer, target - DramMemoryMap::Base, size, base);
     }
 
     void UnmapRegion(Common::PageTable& page_table, VAddr base, u64 size) {
         ASSERT_MSG((size & PAGE_MASK) == 0, "non-page aligned size: {:016X}", size);
         ASSERT_MSG((base & PAGE_MASK) == 0, "non-page aligned base: {:016X}", base);
         MapPages(page_table, base / PAGE_SIZE, size / PAGE_SIZE, 0, Common::PageType::Unmapped);
+
+        fastmem_arena.unmap(base, size);
     }
 
     bool IsValidVirtualAddress(const Kernel::KProcess& process, const VAddr vaddr) const {
@@ -466,6 +473,9 @@ struct Memory::Impl {
         if (vaddr == 0) {
             return;
         }
+
+        fastmem_arena.mprotect(vaddr, size, !cached, !cached);
+
         // Iterate over a contiguous CPU address space, which corresponds to the specified GPU
         // address space, marking the region as un/cached. The region is marked un/cached at a
         // granularity of CPU pages, hence why we iterate on a CPU page basis (note: GPU page size
@@ -747,6 +757,8 @@ struct Memory::Impl {
 
     Common::PageTable* current_page_table = nullptr;
     Core::System& system;
+
+    Common::VirtualMemoryRegion fastmem_arena{1LL << 39, (u8*)((1LL << 47) - (1LL << 39))};
 };
 
 Memory::Memory(Core::System& system_) : system{system_} {

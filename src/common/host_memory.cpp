@@ -14,6 +14,7 @@
 
 #include <cassert>
 #include <cstring>
+#include "common/assert.h"
 #include "common/host_memory.h"
 
 static size_t total_memory_used = 0;
@@ -43,7 +44,8 @@ public:
         if (bytes) {
             pointer =
                 static_cast<u8*>(mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
-            if (pointer == nullptr) {
+            if (pointer == MAP_FAILED) {
+                pointer = nullptr;
                 return false;
             }
         } else {
@@ -64,9 +66,8 @@ public:
     bool map(size_t length, size_t offset, u8* pointer) {
         void* ret =
             mmap(pointer, length, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, offset);
-        assert(ret == nullptr || ret == pointer);
 
-        return ret != nullptr;
+        return ret != MAP_FAILED && ret == pointer;
     }
 
     bool unmap(size_t length, u8* pointer) {
@@ -80,9 +81,22 @@ public:
     const int fd;
 };
 
+class VirtualMemoryRegion::Impl {
+public:
+    Impl(size_t size, u8* base_pointer_hint) {
+        base_pointer = static_cast<u8*>(
+            mmap(base_pointer_hint, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+        ASSERT_MSG(base_pointer == MAP_FAILED, "no virtual memory region could be allocated");
+        if (base_pointer == MAP_FAILED)
+            base_pointer = nullptr;
+    }
+
+    u8* base_pointer{};
+};
+
 #elif defined(_WIN32)
 
-class Impl {
+class HostMemory::Impl {
     Impl() {
         handle = CreateFileMapping(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, 0, nullptr);
         assert(handle != nullptr);
@@ -132,6 +146,10 @@ class Impl {
     size_t size = 0;
     u8* pointer = nullptr;
     HANDLE handle;
+};
+
+class VirtualMemoryRegion::Impl {
+    // TODO: big todo...
 };
 
 #else
@@ -248,6 +266,40 @@ const u8* HostMemory::data() const {
         return nullptr;
 
     return impl->pointer;
+}
+
+VirtualMemoryRegion::VirtualMemoryRegion(size_t size, u8* base_pointer_hint)
+    : impl{std::make_unique<Impl>(size, base_pointer_hint)} {}
+
+VirtualMemoryRegion::~VirtualMemoryRegion() {}
+
+u8* VirtualMemoryRegion::getBasePointer() {
+    return impl->base_pointer;
+}
+
+const u8* VirtualMemoryRegion::getBasePointer() const {
+    return impl->base_pointer;
+}
+
+bool VirtualMemoryRegion::map(HostMemory& memory, size_t host_offset, size_t length,
+                              size_t virtual_offset) {
+    return memory.map(length, host_offset, impl->base_pointer + virtual_offset);
+}
+
+void VirtualMemoryRegion::unmap(size_t offset, size_t length) {
+    int ret = munmap(impl->base_pointer + offset, length);
+    (void)ret;
+}
+
+bool VirtualMemoryRegion::mprotect(size_t offset, size_t length, bool read, bool write) {
+    int flags = 0;
+    if (read)
+        flags |= PROT_READ;
+    if (write)
+        flags |= PROT_WRITE;
+    int ret = ::mprotect(impl->base_pointer + offset, length, flags);
+    (void)ret;
+    return true;
 }
 
 } // namespace Common
