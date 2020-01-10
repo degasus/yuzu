@@ -142,6 +142,7 @@ std::unique_ptr<Dynarmic::A64::Jit> ARM_Dynarmic::MakeJit(Common::PageTable& pag
     config.page_table_address_space_bits = address_space_bits;
     config.silently_mirror_page_table = false;
     config.absolute_offset_page_table = true;
+    config.fastmem_arena = (u8*)((1LL << 47) - (1LL << 39));
 
     // Multi-process state
     config.processor_id = core_index;

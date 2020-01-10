@@ -6,10 +6,12 @@
 #include <cstring>
 #include <optional>
 #include <utility>
+#include <sys/mman.h>
 
 #include "common/assert.h"
 #include "common/common_types.h"
 #include "common/logging/log.h"
+#include "common/microprofile.h"
 #include "common/page_table.h"
 #include "common/swap.h"
 #include "core/arm/arm_interface.h"
@@ -19,6 +21,45 @@
 #include "core/hle/kernel/vm_manager.h"
 #include "core/memory.h"
 #include "video_core/gpu.h"
+
+#include <unistd.h>  // Needed for _POSIX_VERSION
+#include <signal.h>
+
+
+MICROPROFILE_DEFINE(ARM_FASTMEM_EXCEPTION, "ARM JIT", "Fastmem exception", MP_RGB(255, 64, 64));
+MICROPROFILE_DEFINE(ARM_FASTMEM_MPROTECT, "ARM JIT", "Fastmem mprotect", MP_RGB(255, 64, 64));
+
+static Memory::Memory* mem;
+static std::array<u8,4096> buffer;
+
+static void sigsegv_handler(int sig, siginfo_t* info, void* raw_context)
+{
+    if (sig != SIGSEGV && sig != SIGBUS)
+    {
+        // We are not interested in other signals - handle it as usual.
+        return;
+    }
+    ucontext_t* context = (ucontext_t*)raw_context;
+    int sicode = info->si_code;
+    if (sicode != SEGV_MAPERR && sicode != SEGV_ACCERR)
+    {
+        // Huh? Return.
+        return;
+    }
+    MICROPROFILE_SCOPE(ARM_FASTMEM_EXCEPTION);
+    uintptr_t bad_address = (uintptr_t)info->si_addr;
+
+    // Get all the information we can out of the context.
+    mcontext_t* ctx = &context->uc_mcontext;
+
+    u64 region = 0x7f8000000000LL;
+    u64 offset = bad_address - region;
+    offset &= ~0xFFF;
+
+
+    mem->ReadBlock(offset, &buffer, 0x1000);
+    mem->WriteBlock(offset, &buffer, 0x1000);
+}
 
 namespace Memory {
 
@@ -37,11 +78,27 @@ struct Memory::Impl {
         system.ArmInterface(1).PageTableChanged(*current_page_table, address_space_width);
         system.ArmInterface(2).PageTableChanged(*current_page_table, address_space_width);
         system.ArmInterface(3).PageTableChanged(*current_page_table, address_space_width);
+
+static struct sigaction old_sa_segv;
+        stack_t signal_stack;
+        signal_stack.ss_sp = malloc(SIGSTKSZ);
+        signal_stack.ss_size = SIGSTKSZ;
+        signal_stack.ss_flags = 0;
+        if (sigaltstack(&signal_stack, nullptr))
+            printf("sigaltstack failed\n");
+        struct sigaction sa;
+        sa.sa_handler = nullptr;
+        sa.sa_sigaction = &sigsegv_handler;
+        sa.sa_flags = SA_SIGINFO;
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGSEGV, &sa, &old_sa_segv);
     }
 
     void MapMemoryRegion(Common::PageTable& page_table, VAddr base, u64 size,
                          Kernel::PhysicalMemory& memory, VAddr offset) {
         MapMemoryRegion(page_table, base, size, memory.data() + offset);
+
+        memory.map(size, offset, fastmem_arena + base);
     }
 
     void MapMemoryRegion(Common::PageTable& page_table, VAddr base, u64 size, u8* target) {
@@ -69,6 +126,8 @@ struct Memory::Impl {
         ASSERT_MSG((base & PAGE_MASK) == 0, "non-page aligned base: {:016X}", base);
         MapPages(page_table, base / PAGE_SIZE, size / PAGE_SIZE, nullptr,
                  Common::PageType::Unmapped);
+
+        int ret = munmap(fastmem_arena + base, size);
 
         const auto interval = boost::icl::discrete_interval<VAddr>::closed(base, base + size - 1);
         page_table.special_regions.erase(interval);
@@ -409,6 +468,13 @@ struct Memory::Impl {
             return;
         }
 
+        MICROPROFILE_SCOPE(ARM_FASTMEM_MPROTECT);
+        if (cached) {
+            int ret = mprotect(fastmem_arena + vaddr, size, PROT_NONE);
+        } else {
+            int ret = mprotect(fastmem_arena + vaddr, size, PROT_READ | PROT_WRITE);
+        }
+
         // Iterate over a contiguous CPU address space, which corresponds to the specified GPU
         // address space, marking the region as un/cached. The region is marked un/cached at a
         // granularity of CPU pages, hence why we iterate on a CPU page basis (note: GPU page size
@@ -597,9 +663,13 @@ struct Memory::Impl {
 
     Common::PageTable* current_page_table = nullptr;
     Core::System& system;
+
+    u8* fastmem_arena = (u8*)((1LL << 47) - (1LL << 39));
 };
 
-Memory::Memory(Core::System& system) : impl{std::make_unique<Impl>(system)} {}
+Memory::Memory(Core::System& system) : impl{std::make_unique<Impl>(system)} {
+    mem = this;
+}
 Memory::~Memory() = default;
 
 void Memory::SetCurrentPageTable(Kernel::Process& process) {
