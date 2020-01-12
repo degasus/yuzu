@@ -9,6 +9,7 @@
 #include <string>
 #include "common/common_types.h"
 #include "common/memory_hook.h"
+#include "core/hle/kernel/physical_memory.h"
 
 namespace Common {
 struct PageTable;
@@ -64,6 +65,19 @@ public:
      * @param process The process to use the page table of.
      */
     void SetCurrentPageTable(Kernel::Process& process);
+
+    /**
+     * Maps an physical buffer onto a region of the emulated process address space.
+     *
+     * @param page_table The page table of the emulated process.
+     * @param base       The address to start mapping at. Must be page-aligned.
+     * @param size       The amount of bytes to map. Must be page-aligned.
+     * @param memory     Physical buffer with the memory backing the mapping. Must be of length
+     *                   at least `size + offset`.
+     * @param offset     The offset within the physical memory. Must be page-aligned.
+     */
+    void MapMemoryRegion(Common::PageTable& page_table, VAddr base, u64 size,
+                         Kernel::PhysicalMemory& memory, VAddr offset);
 
     /**
      * Maps an allocated buffer onto a region of the emulated process address space.
