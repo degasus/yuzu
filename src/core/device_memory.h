@@ -5,7 +5,7 @@
 #pragma once
 
 #include "common/common_types.h"
-#include "common/virtual_buffer.h"
+#include "common/host_memory.h"
 
 namespace Core {
 
@@ -40,8 +40,7 @@ public:
         return buffer.data() + (addr - DramMemoryMap::Base);
     }
 
-private:
-    Common::VirtualBuffer<u8> buffer;
+    Common::HostMemory buffer;
 };
 
 } // namespace Core
