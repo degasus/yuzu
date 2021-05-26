@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "common/assert.h"
 #include "common/common_types.h"
 #include "common/virtual_buffer.h"
 
@@ -28,15 +29,23 @@ public:
 
     template <typename T>
     PAddr GetPhysicalAddr(const T* ptr) const {
-        return (reinterpret_cast<uintptr_t>(ptr) - reinterpret_cast<uintptr_t>(buffer.data())) +
-               DramMemoryMap::Base;
+        PAddr addr =
+            (reinterpret_cast<uintptr_t>(ptr) - reinterpret_cast<uintptr_t>(buffer.data())) +
+            DramMemoryMap::Base;
+        ASSERT_MSG(addr >= DramMemoryMap::Base && addr < DramMemoryMap::End,
+                   "out of bounds addr: {:016X}", addr);
+        return addr;
     }
 
     u8* GetPointer(PAddr addr) {
+        ASSERT_MSG(addr >= DramMemoryMap::Base && addr < DramMemoryMap::End,
+                   "out of bounds addr: {:016X}", addr);
         return buffer.data() + (addr - DramMemoryMap::Base);
     }
 
     const u8* GetPointer(PAddr addr) const {
+        ASSERT_MSG(addr >= DramMemoryMap::Base && addr < DramMemoryMap::End,
+                   "out of bounds addr: {:016X}", addr);
         return buffer.data() + (addr - DramMemoryMap::Base);
     }
 
