@@ -12,6 +12,7 @@
 #include "common/common_types.h"
 #include "common/logging/log.h"
 #include "common/page_table.h"
+#include "common/settings.h"
 #include "common/swap.h"
 #include "core/arm/arm_interface.h"
 #include "core/core.h"
@@ -474,7 +475,8 @@ struct Memory::Impl {
             return;
         }
 
-        fastmem_arena.mprotect(vaddr, size, !cached, !cached);
+        const bool is_read_enable = Settings::IsGPULevelHigh() || !cached;
+        fastmem_arena.mprotect(vaddr, size, is_read_enable, !cached);
 
         // Iterate over a contiguous CPU address space, which corresponds to the specified GPU
         // address space, marking the region as un/cached. The region is marked un/cached at a
