@@ -401,7 +401,7 @@ void VirtualMemoryRegion::unmap(size_t offset, [[maybe_unused]] size_t length) {
     }
     if (it_start->first == page_base_start && start_address != aligned_start_address) {
         const u64 pages_start = (start_address & Impl::host_page_mask) >> Impl::guest_page_bits;
-        const u64 not_sub_pages = ((1 << pages_start) - 1);
+        const u64 not_sub_pages = ((1ULL << pages_start) - 1ULL);
         it_start->second &= static_cast<u16>(not_sub_pages);
         if (it_start->second != 0) {
             it_start = std::next(it_start);

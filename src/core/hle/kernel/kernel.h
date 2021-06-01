@@ -207,10 +207,10 @@ public:
     const KMemoryManager& MemoryManager() const;
 
     /// Gets the slab heap allocated for user space pages.
-    KSlabHeap<Page>& GetUserSlabHeapPages();
+    KSlabHeap<HostPage>& GetUserSlabHeapPages();
 
     /// Gets the slab heap allocated for user space pages.
-    const KSlabHeap<Page>& GetUserSlabHeapPages() const;
+    const KSlabHeap<HostPage>& GetUserSlabHeapPages() const;
 
     /// Gets the shared memory object for HID services.
     Kernel::KSharedMemory& GetHidSharedMem();

@@ -620,8 +620,7 @@ struct KernelCore::Impl {
 
     void InitializePageSlab() {
         // Allocate slab heaps
-        user_slab_heap_pages =
-            std::make_unique<KSlabHeap<Page>>(KSlabHeap<Page>::AllocationType::Guest);
+        user_slab_heap_pages = std::make_unique<KSlabHeap<HostPage>>();
 
         // TODO(ameerj): This should be derived, not hardcoded within the kernel
         constexpr u64 user_slab_heap_size{0x3de000};
@@ -669,7 +668,7 @@ struct KernelCore::Impl {
 
     // Kernel memory management
     std::unique_ptr<KMemoryManager> memory_manager;
-    std::unique_ptr<KSlabHeap<Page>> user_slab_heap_pages;
+    std::unique_ptr<KSlabHeap<HostPage>> user_slab_heap_pages;
 
     // Shared memory for services
     Kernel::KSharedMemory* hid_shared_mem{};
@@ -912,11 +911,11 @@ const KMemoryManager& KernelCore::MemoryManager() const {
     return *impl->memory_manager;
 }
 
-KSlabHeap<Page>& KernelCore::GetUserSlabHeapPages() {
+KSlabHeap<HostPage>& KernelCore::GetUserSlabHeapPages() {
     return *impl->user_slab_heap_pages;
 }
 
-const KSlabHeap<Page>& KernelCore::GetUserSlabHeapPages() const {
+const KSlabHeap<HostPage>& KernelCore::GetUserSlabHeapPages() const {
     return *impl->user_slab_heap_pages;
 }
 

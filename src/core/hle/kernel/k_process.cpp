@@ -31,6 +31,7 @@
 
 namespace Kernel {
 namespace {
+
 /**
  * Sets up the primary application thread
  *
@@ -73,8 +74,7 @@ void SetupMainThread(Core::System& system, KProcess& owner_process, u32 priority
 // (whichever page happens to have an available slot).
 class TLSPage {
 public:
-    static constexpr std::size_t num_slot_entries =
-        Core::Memory::PAGE_SIZE / Core::Memory::TLS_ENTRY_SIZE;
+    static constexpr std::size_t num_slot_entries = HostPageSize / Core::Memory::TLS_ENTRY_SIZE;
 
     explicit TLSPage(VAddr address) : base_address{address} {}
 
@@ -111,7 +111,7 @@ public:
 
 private:
     bool IsWithinPage(VAddr address) const {
-        return base_address <= address && address < base_address + Core::Memory::PAGE_SIZE;
+        return base_address <= address && address < base_address + HostPageSize;
     }
 
     VAddr base_address;
@@ -432,22 +432,22 @@ VAddr KProcess::CreateTLSRegion() {
         return *tls_page_iter->ReserveSlot();
     }
 
-    Page* const tls_page_ptr{kernel.GetUserSlabHeapPages().Allocate()};
+    HostPage* const tls_page_ptr{kernel.GetUserSlabHeapPages().Allocate()};
     ASSERT(tls_page_ptr);
 
     const VAddr start{page_table->GetKernelMapRegionStart()};
     const VAddr size{page_table->GetKernelMapRegionEnd() - start};
     const PAddr tls_map_addr{kernel.System().DeviceMemory().GetPhysicalAddr(tls_page_ptr)};
-    const VAddr tls_page_addr{page_table
-                                  ->AllocateAndMapMemory(1, PageSize, true, start, size / PageSize,
-                                                         KMemoryState::ThreadLocal,
-                                                         KMemoryPermission::ReadAndWrite,
-                                                         tls_map_addr)
-                                  .ValueOr(0)};
+    const VAddr tls_page_addr{
+        page_table
+            ->AllocateAndMapMemory(HostPageSize / PageSize, HostPageSize, true, start,
+                                   size / PageSize, KMemoryState::ThreadLocal,
+                                   KMemoryPermission::ReadAndWrite, tls_map_addr)
+            .ValueOr(0)};
 
     ASSERT(tls_page_addr);
 
-    std::memset(tls_page_ptr, 0, PageSize);
+    std::memset(tls_page_ptr, 0, HostPageSize);
     tls_pages.emplace_back(tls_page_addr);
 
     const auto reserve_result{tls_pages.back().ReserveSlot()};
@@ -458,7 +458,7 @@ VAddr KProcess::CreateTLSRegion() {
 
 void KProcess::FreeTLSRegion(VAddr tls_address) {
     KScopedSchedulerLock lock(kernel);
-    const VAddr aligned_address = Common::AlignDown(tls_address, Core::Memory::PAGE_SIZE);
+    const VAddr aligned_address = Common::AlignDown(tls_address, HostPageSize);
     auto iter =
         std::find_if(tls_pages.begin(), tls_pages.end(), [aligned_address](const auto& page) {
             return page.GetBaseAddress() == aligned_address;
@@ -512,15 +512,15 @@ ResultCode KProcess::AllocateMainThreadStack(std::size_t stack_size) {
     ASSERT(stack_size);
 
     // The kernel always ensures that the given stack size is page aligned.
-    main_thread_stack_size = Common::AlignUp(stack_size, PageSize);
+    main_thread_stack_size = Common::AlignUp(stack_size, HostPageSize);
 
     const VAddr start{page_table->GetStackRegionStart()};
     const std::size_t size{page_table->GetStackRegionEnd() - start};
 
     CASCADE_RESULT(main_thread_stack_top,
                    page_table->AllocateAndMapMemory(
-                       main_thread_stack_size / PageSize, PageSize, false, start, size / PageSize,
-                       KMemoryState::Stack, KMemoryPermission::ReadAndWrite));
+                       main_thread_stack_size / PageSize, HostPageSize, false, start,
+                       size / PageSize, KMemoryState::Stack, KMemoryPermission::ReadAndWrite));
 
     main_thread_stack_top += main_thread_stack_size;
 
