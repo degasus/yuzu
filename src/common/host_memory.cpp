@@ -79,13 +79,10 @@ public:
     void Map(size_t virtual_offset, size_t host_offset, size_t length) {
         std::unique_lock lock{placeholder_mutex};
         if (!IsNiechePlaceholder(virtual_offset, length)) {
-            lock.unlock();
             Split(virtual_offset, length);
-            lock.lock();
         }
         ASSERT(placeholders.find({virtual_offset, virtual_offset + length}) == placeholders.end());
         TrackPlaceholder(virtual_offset, host_offset, length);
-        lock.unlock();
 
         MapView(virtual_offset, host_offset, length);
     }
